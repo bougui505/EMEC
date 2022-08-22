@@ -5,7 +5,7 @@
 # https://research.pasteur.fr/en/member/guillaume-bouvier/
 # 2017-05-15 09:59:46 (UTC+0200)
 
-import ConfigParser
+import configparser
 import sys
 import re
 import numpy
@@ -22,6 +22,7 @@ import all_atoms
 import hashlib
 
 from mpi4py import MPI
+
 
 def barrier(comm, tag=0, sleep=0.01):
     """
@@ -44,6 +45,7 @@ def barrier(comm, tag=0, sleep=0.01):
         req.Wait()
         mask <<= 1
 
+
 class Config(object):
     """
     Read the configuration file
@@ -52,19 +54,19 @@ class Config(object):
         """
         • Configuration file name
         """
-        self.config = ConfigParser.ConfigParser()
+        self.config = configparser.ConfigParser()
         self.config.read(configfilename)
         # Log data:
-        logging.info("EM netCDF filename: %s"%self.nc)
-        logging.info("EM level: %.2g"%self.level)
-        logging.info("EM resolution: %.2g"%self.resolution)
-        logging.info("Pruning threshold: %d"%self.pruning_threshold)
-        logging.info("Chain ids: %s"%' '.join(sorted(self.sequences.keys())))
+        logging.info("EM netCDF filename: %s" % self.nc)
+        logging.info("EM level: %.2g" % self.level)
+        logging.info("EM resolution: %.2g" % self.resolution)
+        logging.info("Pruning threshold: %d" % self.pruning_threshold)
+        logging.info("Chain ids: %s" % ' '.join(sorted(self.sequences.keys())))
         for chainid in sorted(self.contacts.keys()):
-            logging.info("Chain %s contact file: %s"%(chainid, self.contacts[chainid]))
-            logging.info("Chain %s sequence file: %s"%(chainid, self.sequences[chainid]))
-        logging.info("Maximum number of iterations for fragment merging: %s"%self.max_iter)
-        logging.info("Neighbor distance threshold (in A) for fragment merging: %.2g"%self.neighbor_threshold)
+            logging.info("Chain %s contact file: %s" % (chainid, self.contacts[chainid]))
+            logging.info("Chain %s sequence file: %s" % (chainid, self.sequences[chainid]))
+        logging.info("Maximum number of iterations for fragment merging: %s" % self.max_iter)
+        logging.info("Neighbor distance threshold (in A) for fragment merging: %.2g" % self.neighbor_threshold)
 
     @property
     def level(self):
@@ -143,11 +145,13 @@ class Config(object):
                 seq_dict[chainid] = self.config.get(s, 'sequence')
         return seq_dict
 
+
 def gethash(arr):
     """
     Hash a numpy array
     """
     return hashlib.md5(arr).hexdigest()
+
 
 class Chains(object):
     """
@@ -165,7 +169,7 @@ class Chains(object):
         self.catraces = catraces
         # Get unique identifier for each fragment
         self.hashes = {gethash(_): i for i, _ in enumerate(catraces)}
-        self.maligns = {} # Dictionnary of map alignment for each chain
+        self.maligns = {}  # Dictionnary of map alignment for each chain
         self.aln_score()
         # Alignment scores
         self.scores = {k: self.maligns[k].aln.score for k in self.maligns}
@@ -178,10 +182,11 @@ class Chains(object):
         if RANK == 0:
             for chainid in sorted(self.chainids):
                 malign = self.maligns[chainid]
-                logging.info("Chain %s: contact map alignment score: %.4g"%(chainid, malign.aln.score))
-                logging.info("Chain %s: number of residues aligned: %d/%d"%(chainid, malign.aln.n_align, malign.aln.npos))
-                coverage = float(malign.aln.n_align)/malign.aln.npos
-                logging.info("Chain %s: alignment coverage: %.4g"%(chainid, coverage))
+                logging.info("Chain %s: contact map alignment score: %.4g" % (chainid, malign.aln.score))
+                logging.info("Chain %s: number of residues aligned: %d/%d" %
+                             (chainid, malign.aln.n_align, malign.aln.npos))
+                coverage = float(malign.aln.n_align) / malign.aln.npos
+                logging.info("Chain %s: alignment coverage: %.4g" % (chainid, coverage))
 
     def aln_score(self):
         """
@@ -192,21 +197,25 @@ class Chains(object):
         barrier(COMM)
         if RANK == 0:
             njobs = len(self.chainids)
-            k = int(numpy.ceil(float(njobs)/SIZE))
+            k = int(numpy.ceil(float(njobs) / SIZE))
             job_array = range(njobs)
-            job_array.extend([None, ]*(k*SIZE-njobs)) # Add None values if not a multiple of SIZE
+            job_array.extend([
+                None,
+            ] * (k * SIZE - njobs))  # Add None values if not a multiple of SIZE
             job_array = numpy.asarray(job_array).reshape(k, SIZE)
         else:
             job_array = None
         job_array = COMM.bcast(job_array, root=0)
-        harvest = [] # to store the results of the gathering [(job_id1: result1), ()job_id2: result2, ...]
+        harvest = []  # to store the results of the gathering [(job_id1: result1), ()job_id2: result2, ...]
         for job_ids in job_array:
             job_id = COMM.scatter(job_ids, root=0)
             if job_id is not None:
                 chainid = self.chainids[job_id]
-                print "Global map alignment for chain %s"%chainid
-                malign = map_align.MapAlign(self.catraces, self.config.nc,
-                                            self.config.level, self.config.contacts[chainid],
+                print("Global map alignment for chain %s" % chainid)
+                malign = map_align.MapAlign(self.catraces,
+                                            self.config.nc,
+                                            self.config.level,
+                                            self.config.contacts[chainid],
                                             self.config.sequences[chainid],
                                             neighbor_threshold=self.config.neighbor_threshold)
                 malign.align_fragments(max_iter=self.config.max_iter)
@@ -226,20 +235,22 @@ class Chains(object):
         barrier(COMM)
         if RANK == 0:
             chainid = self.chainids[0]
-            print "Build CA trace for chain %s"%chainid
+            print("Build CA trace for chain %s" % chainid)
             # List of unique identifiers for catraces
             fragments_used = [gethash(self.catraces[i])\
                               for i in self.maligns[chainid].adjmat.max_score().key[0]]
             info = [self.hashes[_] for _ in fragments_used]
-            logging.info("Fragments attributed to chain %s: %s"%(chainid, info))
+            logging.info("Fragments attributed to chain %s: %s" % (chainid, info))
             for chainid in self.chainids[1:]:
-                print "Build CA trace for chain %s"%chainid
+                print("Build CA trace for chain %s" % chainid)
                 catraces = [catrace for catrace in self.catraces\
                             if gethash(catrace)\
                             not in fragments_used]
-                print "Remaining number of fragments to merge %d"%len(catraces)
-                malign = map_align.MapAlign(catraces, self.config.nc,
-                                            self.config.level, self.config.contacts[chainid],
+                print("Remaining number of fragments to merge %d" % len(catraces))
+                malign = map_align.MapAlign(catraces,
+                                            self.config.nc,
+                                            self.config.level,
+                                            self.config.contacts[chainid],
                                             self.config.sequences[chainid],
                                             neighbor_threshold=self.config.neighbor_threshold)
                 malign.align_fragments(max_iter=self.config.max_iter)
@@ -247,8 +258,9 @@ class Chains(object):
                                   for i in malign.adjmat.max_score().key[0]]
                 fragments_used.extend(fragments_hash)
                 info = [self.hashes[_] for _ in fragments_hash]
-                logging.info("Fragments attributed to chain %s: %s"%(chainid, info))
+                logging.info("Fragments attributed to chain %s: %s" % (chainid, info))
                 self.maligns[chainid] = malign
+
 
 def fetch_modeller_objective_function(pdbfilename):
     """
@@ -260,6 +272,7 @@ def fetch_modeller_objective_function(pdbfilename):
             if re.match("(.*)MODELLER OBJECTIVE FUNCTION(.*)", line):
                 string = line[11:-1]
     return string
+
 
 class CAtoAll(object):
     """
@@ -274,9 +287,8 @@ class CAtoAll(object):
         self.chains = chains
         # List of chain ids (e.g. ['A', 'C', 'B']):
         self.chainids = self.chains.chainids
-        print "Building atomic models for chains: %s"%self.chainids
+        print("Building atomic models for chains: %s" % self.chainids)
         self.get_all_atoms()
-
 
     def get_all_atoms(self):
         """
@@ -285,19 +297,21 @@ class CAtoAll(object):
         barrier(COMM)
         if RANK == 0:
             njobs = len(self.chainids)
-            k = int(numpy.ceil(float(njobs)/SIZE))
+            k = int(numpy.ceil(float(njobs) / SIZE))
             job_array = range(njobs)
-            job_array.extend([None, ]*(k*SIZE-njobs)) # Add None values if not a multiple of SIZE
+            job_array.extend([
+                None,
+            ] * (k * SIZE - njobs))  # Add None values if not a multiple of SIZE
             job_array = numpy.asarray(job_array).reshape(k, SIZE)
         else:
             job_array = None
         job_array = COMM.bcast(job_array, root=0)
-        harvest = [] # to store the results of the gathering [(job_id1: result1), ()job_id2: result2, ...]
+        harvest = []  # to store the results of the gathering [(job_id1: result1), ()job_id2: result2, ...]
         for job_ids in job_array:
             job_id = COMM.scatter(job_ids, root=0)
             if job_id is not None:
                 chainid = self.chainids[job_id]
-                print "Job #%d: Building all atom model for chain %s"%(job_id, chainid)
+                print("Job #%d: Building all atom model for chain %s" % (job_id, chainid))
                 data = self.refine(chainid)
             gather = COMM.gather(data, root=0)
             if gather is not None:
@@ -311,22 +325,27 @@ class CAtoAll(object):
         """
         em_level = -numpy.inf
         malign = self.chains.maligns[chainid]
-        malign.aln = map_align.map_align(malign.coords, malign.gmap,
-                                         fasta_file=malign.fasta_file)
-        modeller_out_basename = "model_%s"%(chainid)
-        aa = all_atoms.AllAtoms('chain_%s.pdb'%chainid, self.config.sequences[chainid], self.config.nc,
-                                em_level, "chain_%s.mrc"%chainid, self.config.resolution,
+        malign.aln = map_align.map_align(malign.coords, malign.gmap, fasta_file=malign.fasta_file)
+        modeller_out_basename = "model_%s" % (chainid)
+        aa = all_atoms.AllAtoms('chain_%s.pdb' % chainid,
+                                self.config.sequences[chainid],
+                                self.config.nc,
+                                em_level,
+                                "chain_%s.mrc" % chainid,
+                                self.config.resolution,
                                 basename=modeller_out_basename)
-        logging.info("Modeller: Chain %s: %s"%(chainid, fetch_modeller_objective_function("%s.pdb"%modeller_out_basename)))
+        logging.info("Modeller: Chain %s: %s" %
+                     (chainid, fetch_modeller_objective_function("%s.pdb" % modeller_out_basename)))
         malign.coords_best = aa.ca_trace
         # map alignment after modeller optimization for all atoms
-        malign.aln = map_align.map_align(aa.cmap, malign.gmap,
-                                         fasta_file=malign.fasta_file)
-        logging.info("Modeller: Chain %s: contact map alignment score: %.4g"%(chainid, malign.aln.score))
-        logging.info("Modeller: Chain %s: number of residues aligned: %d/%d"%(chainid, malign.aln.n_align, malign.aln.npos))
-        coverage = float(malign.aln.n_align)/malign.aln.npos
-        logging.info("Modeller: Chain %s: alignment coverage: %.4g"%(chainid, coverage))
+        malign.aln = map_align.map_align(aa.cmap, malign.gmap, fasta_file=malign.fasta_file)
+        logging.info("Modeller: Chain %s: contact map alignment score: %.4g" % (chainid, malign.aln.score))
+        logging.info("Modeller: Chain %s: number of residues aligned: %d/%d" %
+                     (chainid, malign.aln.n_align, malign.aln.npos))
+        coverage = float(malign.aln.n_align) / malign.aln.npos
+        logging.info("Modeller: Chain %s: alignment coverage: %.4g" % (chainid, coverage))
         return malign
+
 
 def zone(ncfile, coords, outmrcfilename, distance_threshold=4.):
     """
@@ -342,8 +361,7 @@ def zone(ncfile, coords, outmrcfilename, distance_threshold=4.):
     # Zero filling to have a cubic map for modeller
     nx, ny, nz = data.shape
     maxdim = max(nx, ny, nz)
-    data = numpy.pad(data, ((0, maxdim-nx), (0, maxdim-ny), (0, maxdim-nz)),
-                     'constant', constant_values=(0, 0))
+    data = numpy.pad(data, ((0, maxdim - nx), (0, maxdim - ny), (0, maxdim - nz)), 'constant', constant_values=(0, 0))
     mrc = mrcfile.new(outmrcfilename, data=data, overwrite=True)
     mrc.update_header_from_data()
     mrc.voxel_size = (emd.x_step, emd.y_step, emd.z_step)
@@ -353,19 +371,18 @@ def zone(ncfile, coords, outmrcfilename, distance_threshold=4.):
 
 if __name__ == '__main__':
     COMM = MPI.COMM_WORLD
-    SIZE = COMM.Get_size() # Number of CPUS
+    SIZE = COMM.Get_size()  # Number of CPUS
     RANK = COMM.Get_rank()
 
-    logging.basicConfig(filename='mast.log', format='%(levelname)s:%(message)s',
-                        level=logging.DEBUG)
+    logging.basicConfig(filename='emec.log', format='%(levelname)s:%(message)s', level=logging.DEBUG)
     barrier(COMM)
     if RANK == 0:
         config = Config(sys.argv[1])
-        print " Compute the Graph from the EM density map..."
+        print(" Compute the Graph from the EM density map...")
         nc, level = config.nc, config.level
         skl = skeleton.Skeleton(nc, level, config.pruning_threshold)
         for i, chain in enumerate(skl.chains):
-            optimizer.write_pdb(chain.coords_CA, outfilename='fragment_%d.pdb'%i)
+            optimizer.write_pdb(chain.coords_CA, outfilename='fragment_%d.pdb' % i)
         # Get all the C-alpha traces
         catraces = [chain.coords_CA for chain in skl.chains]
     else:
@@ -382,10 +399,9 @@ if __name__ == '__main__':
         # and the corresponding segmented EM map.
         for chainid in chains.chainids:
             optimizer.write_pdb(chains.maligns[chainid].adjmat.max_score().coords,
-                                outfilename='chain_%s.pdb'%chainid,
+                                outfilename='chain_%s.pdb' % chainid,
                                 sequence=chains.maligns[chainid].aln.sequence)
-            zone(config.nc, chains.maligns[chainid].adjmat.max_score().coords,
-                  outmrcfilename='chain_%s.mrc'%chainid)
+            zone(config.nc, chains.maligns[chainid].adjmat.max_score().coords, outmrcfilename='chain_%s.mrc' % chainid)
     barrier(COMM)
     all_atoms = CAtoAll(config, chains)
     barrier(COMM)
