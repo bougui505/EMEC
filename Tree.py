@@ -10,6 +10,7 @@ import Graph
 import scipy.sparse
 import collections
 
+
 def get_degree(adjmat):
     """
     Return the vector of degrees for the given adjacency matrix
@@ -19,6 +20,7 @@ def get_degree(adjmat):
     for i in range(adjmat.shape[0]):
         degrees.append(adjmat[i].indices.size)
     return numpy.asarray(degrees)
+
 
 def select_tree(adjmat, selection, coords=None):
     """
@@ -43,12 +45,12 @@ def select_tree(adjmat, selection, coords=None):
                 row.append(mapping[i])
                 col.append(mapping[j])
                 data.append(adjmat[i, j])
-    adjmat = scipy.sparse.coo_matrix((data, (row, col)),
-                                     shape=(len(selection),)*2)
+    adjmat = scipy.sparse.coo_matrix((data, (row, col)), shape=(len(selection), ) * 2)
     if coords is None:
         return adjmat
     else:
         return adjmat, coords[selection]
+
 
 def clean_tree(MSTree, coords, n_iter=1, exclusion_set=set()):
     """
@@ -62,6 +64,7 @@ def clean_tree(MSTree, coords, n_iter=1, exclusion_set=set()):
         selection = list(selection)
         MSTree, coords = select_tree(MSTree, selection, coords)
     return MSTree, coords
+
 
 def reorder_vine_paths(mstree1, mstree2):
     """
@@ -95,6 +98,7 @@ def reorder_vine_paths(mstree1, mstree2):
                                  shape=tree_1.graph.minimum_spanning_tree.shape)
     return adjmat
 
+
 def intersect(tree1, tree2):
     """
     Get the intersection between two vine trees:
@@ -109,11 +113,11 @@ def intersect(tree1, tree2):
     for end in vpaths_2:
         if len(vpaths_2[end][0]) > 0:
             start = vpaths_2[end][0][0]
-            intersection.extend(tree1.get_vine_path(terminus[0],
-                                                    start=start, end=end))
+            intersection.extend(tree1.get_vine_path(terminus[0], start=start, end=end))
         else:
             intersection.append(end)
     return intersection
+
 
 class Tree(object):
     """
@@ -133,7 +137,7 @@ class Tree(object):
         self.G = self.graph.get_graph(self.graph.minimum_spanning_tree)
         self.degrees = get_degree(self.graph.minimum_spanning_tree)
         self.forks = list(numpy.where(self.degrees > 2)[0])
-        self.F = None # The forks graph
+        self.F = None  # The forks graph
 
         self.coords = coords
         self.density = density
@@ -148,7 +152,9 @@ class Tree(object):
         for node in bfs:
             pointer, distance = node.index, node.distance
             if distance not in bfs_dist:
-                bfs_dist[distance] = [pointer, ]
+                bfs_dist[distance] = [
+                    pointer,
+                ]
             else:
                 bfs_dist[distance].append(pointer)
         return bfs_dist
@@ -196,7 +202,7 @@ class Tree(object):
         while len(bfs_dist[depth]) == degree:
             i += 1
             depth = depth_list[i]
-        return depth_list[i-1]
+        return depth_list[i - 1]
 
     def get_fork_neighbors(self, fork):
         """
@@ -214,9 +220,8 @@ class Tree(object):
         distances = []
         paths = []
         for neighbor in neighbors:
-            vpath = self.get_vine_path(neighbor,
-                                       exclusion_set=set(self.forks))
-            if self.degrees[vpath[-1]] == 1: # End of chain
+            vpath = self.get_vine_path(neighbor, exclusion_set=set(self.forks))
+            if self.degrees[vpath[-1]] == 1:  # End of chain
                 fork_neighbors.append(vpath[-1])
                 paths.append(vpath)
                 if self.density is None:
@@ -224,7 +229,7 @@ class Tree(object):
                 else:
                     densities = self.density.get_density(self.coords[vpath])
                     distances.append(numpy.sum(densities))
-            else: # Node connected to a fork
+            else:  # Node connected to a fork
                 for node in self.G[vpath[-1]].keys():
                     if node != fork and node in self.forks:
                         fork_neighbors.append(node)
@@ -241,14 +246,14 @@ class Tree(object):
         """
         Build the adjacency matrix of the new graph of forks F
         """
-        F = {} # format {i1:{j1:d1, j2:d2, ...}, ...}
-        P = {} # The vine paths from the forks
+        F = {}  # format {i1:{j1:d1, j2:d2, ...}, ...}
+        P = {}  # The vine paths from the forks
         for fork in self.forks:
             #print "Fork: %d/%d"%(i+1, len(self.forks))
             fork_neighbors, distances, paths = self.get_fork_neighbors(fork)
             F[fork] = dict(zip(fork_neighbors, distances))
             P[fork] = dict(zip(fork_neighbors, paths))
-        self.F = F # The Forks graph
+        self.F = F  # The Forks graph
         self.P = P
         return F
 
@@ -262,10 +267,9 @@ class Tree(object):
             self.get_forks_graph()
         out = {}
         for fork in self.F:
-            out[fork] = numpy.sum(self.F[fork].values()) / numpy.float(numpy.min(self.F[fork].values()))
+            out[fork] = numpy.sum(list(self.F[fork].values())) / numpy.min(list(self.F[fork].values()))
         # dictionary sorted by value (first value highest score)
-        out = collections.OrderedDict(sorted(out.items(), key=lambda t: t[1],
-                                             reverse=True))
+        out = collections.OrderedDict(sorted(out.items(), key=lambda t: t[1], reverse=True))
         return out
 
     def find_subtrees(self, return_forest=False):
@@ -299,8 +303,7 @@ class Tree(object):
         • else: create a new object
         """
         row, col, data = [], [], []
-        for i, j, value in zip(self.graph.minimum_spanning_tree.row,
-                               self.graph.minimum_spanning_tree.col,
+        for i, j, value in zip(self.graph.minimum_spanning_tree.row, self.graph.minimum_spanning_tree.col,
                                self.graph.minimum_spanning_tree.data):
             if not i in path and not j in path:
                 row.append(i)
@@ -323,9 +326,7 @@ class Tree(object):
         Add the mstree to self.graph.minimum_spanning_tree
         """
         out_mstree = self.graph.minimum_spanning_tree.tocsr()
-        for i, j, value in zip(mstree.row,
-                               mstree.col,
-                               mstree.data):
+        for i, j, value in zip(mstree.row, mstree.col, mstree.data):
             out_mstree[i, j] = value
         self.graph.minimum_spanning_tree = out_mstree.tocoo()
         self.G = self.graph.get_graph(self.graph.minimum_spanning_tree)
@@ -335,8 +336,8 @@ class Tree(object):
         Get all the simple paths
         """
         paths = []
-        while (1-numpy.isinf(self.graph.minimum_spanning_tree)).sum() > 0:
-            degrees = (1-numpy.isinf(self.graph.minimum_spanning_tree)).sum(axis=0)
+        while (1 - numpy.isinf(self.graph.minimum_spanning_tree)).sum() > 0:
+            degrees = (1 - numpy.isinf(self.graph.minimum_spanning_tree)).sum(axis=0)
             roots = set(numpy.where(degrees == 1)[0])
             root = numpy.random.choice(list(roots))
             bfs = self.find_subtree(root)
@@ -346,8 +347,7 @@ class Tree(object):
             paths.append(path)
         return paths
 
-    def get_vine_path(self, node, exclusion_set=set(), coords=None, start=None,
-                      end=None):
+    def get_vine_path(self, node, exclusion_set=set(), coords=None, start=None, end=None):
         """
         Get the vine path for the given node. Node should be of degree 1
         • exclusion_set: set of nodes to exclude from the path
@@ -375,7 +375,7 @@ class Tree(object):
                 subpath = []
                 addtopath = False
                 order = 1
-                if path.index(start) >  path.index(end):
+                if path.index(start) > path.index(end):
                     start, end = end, start
                     order = -1
                 for e in path:
@@ -406,7 +406,9 @@ class Tree(object):
             vpath = self.get_vine_path(root)
             key = vpath[-1]
             if key not in vine_paths:
-                vine_paths[key] = [vpath[:-1], ]
+                vine_paths[key] = [
+                    vpath[:-1],
+                ]
             else:
                 vine_paths[key].append(vpath[:-1])
         return vine_paths
@@ -417,8 +419,8 @@ class Tree(object):
         COVERS FOR TREES, AND A REDUCTION TO MAXIMUM FLOW
         """
         path_cover = numpy.ones_like(self.graph.minimum_spanning_tree) * numpy.inf
-        while (1-numpy.isinf(self.graph.minimum_spanning_tree)).sum() > 0:
-        #for i in range(10):
+        while (1 - numpy.isinf(self.graph.minimum_spanning_tree)).sum() > 0:
+            #for i in range(10):
             nodes = numpy.asarray(self.find_subtrees()).flatten()
             node = numpy.random.choice(nodes)
             vine_path = self.get_vine_path(node)
@@ -439,7 +441,7 @@ class Tree(object):
         union(nodes) -> A-B-F-H
         """
         start, _ = self.find_subtrees()[0]
-        vine_path = self.get_vine_path(start) # vine path
+        vine_path = self.get_vine_path(start)  # vine path
         row, col, data = [], [], []
         pointer = -1
         for node in vine_path:

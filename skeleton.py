@@ -163,7 +163,7 @@ class Chain(object):
         ######################
         while len(forks) > 0:
             tree.get_forks_graph()
-            fork = tree.forks_score.keys()[0]  # Fork with the highest score
+            fork = list(tree.forks_score.keys())[0]  # Fork with the highest score
             # Get the path to remove
             torm = sorted(tree.P[fork].items(), key=lambda t: len(t[1]))[0][1]
             if len(torm) < self.pruning_threshold:  # Short fragment, remove it
@@ -264,9 +264,9 @@ class Chain(object):
         sparse_resids -= resids
         sparse_resids = numpy.asarray(list(sparse_resids))
         # Add sparse resids to the CA adjacency matrix (diagonal elements)
-        self.CA = add_to_coo(self.CA, ([
+        self.CA = add_to_coo(self.CA, [
             1.,
-        ] * len(sparse_resids), (sparse_resids, sparse_resids)))
+        ] * len(sparse_resids), sparse_resids, sparse_resids)
         resids |= set(sparse_resids)
         resids = numpy.asarray(list(resids))
         # Remove the sidechains for the non detected CA:
@@ -297,7 +297,7 @@ class Chain(object):
         graph.minimum_spanning_tree = self.CA
         tree_ca = Tree.Tree(graph)
 
-        bb = tree_bb.get_vine_paths().values()[0][0]
+        bb = list(tree_bb.get_vine_paths().values())[0][0]
         bb_ca = Tree.intersect(tree_bb, tree_ca)
         no_ca = list(set(bb) - set(bb_ca))
 
@@ -342,7 +342,7 @@ class Chain(object):
             distances = numpy.linalg.norm(numpy.diff(self.coords[path], axis=0), axis=1).cumsum()
             nca = int(round(distances[-1] / 4.32))
             if nca > 0:  # CA to add...
-                p_ca = gaussians((distances, nca))
+                p_ca = gaussians(distances, nca)
                 pointers = path[scipy.signal.argrelmax(p_ca, mode='wrap')[0]]
                 selection.extend(pointers)
         # The list of all CA:

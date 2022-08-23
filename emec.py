@@ -198,7 +198,7 @@ class Chains(object):
         if RANK == 0:
             njobs = len(self.chainids)
             k = int(numpy.ceil(float(njobs) / SIZE))
-            job_array = range(njobs)
+            job_array = list(range(njobs))
             job_array.extend([
                 None,
             ] * (k * SIZE - njobs))  # Add None values if not a multiple of SIZE
@@ -210,7 +210,7 @@ class Chains(object):
         for job_ids in job_array:
             job_id = COMM.scatter(job_ids, root=0)
             if job_id is not None:
-                chainid = self.chainids[job_id]
+                chainid = list(self.chainids)[job_id]
                 print("Global map alignment for chain %s" % chainid)
                 malign = map_align.MapAlign(self.catraces,
                                             self.config.nc,
