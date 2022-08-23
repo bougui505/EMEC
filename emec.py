@@ -298,7 +298,7 @@ class CAtoAll(object):
         if RANK == 0:
             njobs = len(self.chainids)
             k = int(numpy.ceil(float(njobs) / SIZE))
-            job_array = range(njobs)
+            job_array = list(range(njobs))
             job_array.extend([
                 None,
             ] * (k * SIZE - njobs))  # Add None values if not a multiple of SIZE

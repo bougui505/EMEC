@@ -50,7 +50,7 @@ class Alignment(object):
         """
         seq = []  # Sequence aligned
         for i in range(self.npos):  # Iterate over the C alpha position
-            if self.alignment.has_key(i):
+            if i in self.alignment:
                 # The bead is aligned with the contact map
                 seq.append(self.sequence[self.alignment[i]])
             else:
@@ -192,7 +192,7 @@ def map_align(inputdata, cmap_target, fasta_file=None, threshold=8., gap_o=-3., 
         score -= inputdata.shape[0] - n_align
         # Dictionnary of the alignment:
         # {resid_input: resid_target, ...}
-        alignment = dict([numpy.int_(e.split(':')) for e in out_splitted[8:]])
+        alignment = dict([numpy.int_(str(e.decode()).split(':')) for e in out_splitted[8:]])
         return Alignment(alignment, score, n_align, fasta_file=fasta_file, npos=inputdata.shape[0])
     else:
         return None
@@ -490,8 +490,7 @@ class MapAlign(object):
             for key in zip(*peptide.key):
                 pept_ = copy.deepcopy(self.peptides[key])
                 nca = pept_.nca
-                alignment = {k-start: v for (k, v) in peptide.aln.alignment.iteritems()\
-                             if k in range(start, start+nca)}
+                alignment = {k - start: v for (k, v) in peptide.aln.alignment.items() if k in range(start, start + nca)}
                 pept_.aln = copy.deepcopy(peptide.aln)
                 pept_.aln.alignment = alignment
                 components.append(copy.deepcopy(pept_))
