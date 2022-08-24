@@ -403,5 +403,5 @@ if __name__ == '__main__':
                                 sequence=chains.maligns[chainid].aln.sequence)
             zone(config.nc, chains.maligns[chainid].adjmat.max_score().coords, outmrcfilename='chain_%s.mrc' % chainid)
     barrier(COMM)
-    all_atoms = CAtoAll(config, chains)
+    model = CAtoAll(config, chains)
     barrier(COMM)
