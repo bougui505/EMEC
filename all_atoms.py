@@ -14,6 +14,9 @@ import sys
 sys.path.append('/home/bougui/source/modeller_repair_protein')
 import repair_protein
 import Graph
+import tempfile
+import os
+import subprocess
 
 def read_pdb(pdbfilename):
     """
@@ -52,12 +55,38 @@ def get_cmap(pdbfile, threshold=5.):
     cmap = numpy.int_(cmap <= threshold)
     return cmap
 
+def real_space_refine(pdb, mrc, resolution, nproc):
+    """
+    Use phenix.real_space_refine to refine the given pdb to the given MRC file
+    """
+    fd, path = tempfile.mkstemp()
+    with open(path, 'w') as conf_file:
+        conf_file.write("nproc = %d\n"%nproc)
+        conf_file.write("refinement {\n")
+        conf_file.write("run = minimization_global+local_grid_search+morphing+simulated_annealing\n")
+        conf_file.write("}\n")
+        conf_file.write("pdb_interpretation {\n")
+        conf_file.write("secondary_structure {\n")
+        conf_file.write("enabled = True\n")
+        conf_file.write("protein {\n")
+        conf_file.write("enabled = True\n")
+        conf_file.write("search_method = from_ca\n")
+        conf_file.write("remove_outliers = False\n")
+        conf_file.write("}\n")
+        conf_file.write("}\n")
+        conf_file.write("}\n")
+    args = ['phenix.real_space_refine', pdb, mrc, 'resolution=%.2f'%resolution,
+            path]
+    p = subprocess.Popen(args)
+    p.wait()
+    os.close(fd)
+
 class AllAtoms(object):
     """
     Build an all atom protein fitting the EM density from a CA trace
     """
-    def __init__(self, pdbfile, fasta, emd, level, mrc, resolution, alpha=None,
-                 strand=None, basename=None):
+    def __init__(self, pdbfile, emd, level, mrc, resolution, alpha=None,
+                 strand=None, basename=None, fasta=None):
         """
         • pdbfile: coordinates for the CA trace in PDB format
         • fasta: fasta file with the sequence aligned using map_align
@@ -102,8 +131,7 @@ class AllAtoms(object):
         Convert the CA trace to all atoms
         """
         repair_protein.repair_protein(self.pdbfile, sequence=self.fasta,
-                                      write_psf=True, emd=self.mrc,
-                                      resolution=self.resolution,
+                                      write_psf=True,
                                       alpha=self.alpha, strand=self.strand,
                                       outpdb="%s.pdb"%self.basename)
         # return the coordinates of the all atoms protein
@@ -149,10 +177,8 @@ class AllAtoms(object):
                          refine=True)
         emf.learn()
         self.write_pdb(pdbname="%s.pdb"%self.basename)
-        repair_protein.repair_protein('%s.pdb'%self.basename, emd=self.mrc,
-                                      resolution=self.resolution,
+        repair_protein.repair_protein('%s.pdb'%self.basename,
                                       outpdb=self.basename)
-        repair_protein.align_structures(self.pdbfile, '%s.pdb'%self.basename)
         self.atom_types, self.aa_list, self.chain_ids, self.resids, self.coords, _ = read_pdb('%s.pdb'%self.basename)
 
     def write_pdb(self, pdbname='modeller_out.pdb'):

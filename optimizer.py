@@ -244,16 +244,9 @@ def secondary_structure_attribution(prob_H, prob_E, prob__):
         ss_attr.append(ss_)
     return ss_attr
 
-
-def write_pdb(data,
-              occupancy=None,
-              outfilename="points.pdb",
-              connect=None,
-              sequence=None,
-              atoms=None,
-              chain_ids=None,
-              resids=None,
-              write_conect=True):
+def write_pdb(data, occupancy=None, outfilename="points.pdb",
+              connect=None, sequence=None, atoms=None, chain_ids=None,
+              resids=None, write_conect=True, write_UNK=True):
     """
     write data (coordinates of points (n*3)) in a pdb file
     • sequence: if not None use the sequence (list of 1 letter code) to write to
@@ -262,35 +255,23 @@ def write_pdb(data,
     • chain_ids: list of chain ids
     • resids: list of residue ids
     • write_conect: If True write the CONECT fields
+    • write_UNK: Write UNKnown residues ('non attributed') to PDB file
     """
-    one_to_three = {
-        'R': 'ARG',
-        'H': 'HIS',
-        'K': 'LYS',
-        'D': 'ASP',
-        'E': 'GLU',
-        'S': 'SER',
-        'T': 'THR',
-        'N': 'ASN',
-        'Q': 'GLN',
-        'C': 'CYS',
-        'G': 'GLY',
-        'P': 'PRO',
-        'A': 'ALA',
-        'V': 'VAL',
-        'I': 'ILE',
-        'L': 'LEU',
-        'M': 'MET',
-        'F': 'PHE',
-        'Y': 'TYR',
-        'W': 'TRP'
-    }
+    one_to_three = {'R': 'ARG', 'H': 'HIS', 'K': 'LYS', 'D': 'ASP', 'E': 'GLU',
+                    'S': 'SER', 'T': 'THR', 'N': 'ASN', 'Q': 'GLN', 'C':'CYS',
+                    'G': 'GLY', 'P': 'PRO', 'A': 'ALA', 'V': 'VAL', 'I': 'ILE',
+                    'L': 'LEU', 'M': 'MET', 'F': 'PHE', 'Y': 'TYR', 'W': 'TRP',
+                    'X': 'UNK'}
     if sequence is not None:
         aa_list = [one_to_three[e] if len(e) == 1 else e for e in sequence]
     else:
-        aa_list = [
-            'GLY',
-        ] * data.shape[0]
+        aa_list = ['GLY', ]*data.shape[0]
+    if not write_UNK:
+        # Remove UNK from the data
+        aa_list = numpy.asarray(aa_list)
+        selection = aa_list != 'UNK'
+        data = data[selection]
+        aa_list = aa_list[selection]
     if atoms is None:
         atoms = [
             'CA',
@@ -302,36 +283,36 @@ def write_pdb(data,
     if resids is None:
         resids = numpy.arange(data.shape[0]) + 1
     with open(outfilename, 'w') as outfile:
+        atom_id = 0
         for i, e in enumerate(data):
             x, y, z = e
             x, y, z = "%.3f" % x, "%.3f" % y, "%.3f" % z
             if occupancy is None:
                 if connect is None:
                     aa = aa_list[i]
-                    atom = atoms[i]
-                    chain_id = chain_ids[i]
-                    resid = resids[i]
-                    outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n" %
-                                  ("ATOM", i + 1, atom, aa, chain_id, resid, x, y, z))
+                    if aa is not 'UNK' or write_UNK:
+                        atom = atoms[i]
+                        chain_id = chain_ids[i]
+                        resid = resids[i]
+                        atom_id += 1
+                        outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n"%("ATOM", atom_id, atom, aa, chain_id, resid, x, y, z))
                 else:
-                    if i + 1 in numpy.asarray(connect).flatten():  # the atom is connected to at least one atom
-                        outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n" %
-                                      ("ATOM", i + 1, "QA", "DUM", "A", i + 1, x, y, z))
+                    if i+1 in numpy.asarray(connect).flatten(): # the atom is connected to at least one atom
+                        outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n"%("ATOM", i+1, "QA", "DUM", "A", i+1, x, y, z))
             else:
-                o = "%.2f" % occupancy[i]
+                o = "%.2f"%occupancy[i]
                 if connect is None:
-                    outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s%6s\n" %
-                                  ("ATOM", i + 1, "QA", "DUM", "A", i + 1, x, y, z, o))
+                    outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s%6s\n"%("ATOM", i+1, "QA", "DUM", "A", i+1, x, y, z, o))
                 else:
                     if len(connect[i]) > 1:
-                        outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n" %
-                                      ("ATOM", i + 1, "QA", "DUM", "A", i + 1, x, y, z))
+                        outfile.write("%-6s%5s %4s %3s %s%4s    %8s%8s%8s\n"%("ATOM", i+1, "QA", "DUM", "A", i+1, x, y, z))
         if write_conect:
             if connect is None:
                 connect = []
                 n = len(data)
-                for i in range(n - 1):
-                    connect.append([i + 1, i + 2])
+                for i in range(n-1):
+                    if resids[i+1] - resids[i] <= 1:
+                        connect.append([i+1, i+2])
             if connect is not None:
                 for connect_ids in connect:
                     if len(connect_ids) > 1:
@@ -447,6 +428,7 @@ class OPTIMIZE(object):
             e_angle = self.k_angle * get_angle_energy(coords_flatten, self.angle_potential)
         else:
             e_angle = 0.
+        #print e_dihedral, e_bond, e_density, e_angle
         return e_dihedral + e_bond + e_density + e_angle
 
     def minimize(self, maxiter=None):

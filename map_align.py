@@ -9,8 +9,9 @@ import numpy
 import scipy.spatial.distance
 import scipy.spatial
 from subprocess import Popen
-from subprocess import PIPE
+from subprocess import PIPE, STDOUT
 from tempfile import NamedTemporaryFile
+from tempfile import TemporaryFile
 import progress_reporting
 import EMDensity
 import Graph
@@ -18,6 +19,7 @@ import em_fit
 import scipy.cluster.hierarchy
 import operator
 import copy
+import collections
 
 
 class Alignment(object):
@@ -54,8 +56,8 @@ class Alignment(object):
                 # The bead is aligned with the contact map
                 seq.append(self.sequence[self.alignment[i]])
             else:
-                # The bead is not aligned: no sidechain, put a glycine
-                seq.append('G')
+                # The bead is not aligned: no sidechain, put a X (DUMMY residue...)
+                seq.append('X')
         self.sequence = seq
 
 
@@ -63,14 +65,22 @@ class Adjmat(object):
     """
     Class to store the adjacency matrix for peptide object
     """
-    def __init__(self):
+    def __init__(self, max_iter=numpy.inf):
         self.peptides = {}
+        self.max_iter = max_iter
 
     def append(self, peptide):
         """
         Append peptide object to the adjmat
         """
-        self.peptides[peptide.key] = peptide
+        if len(self.peptides) <= self.max_iter or peptide.score == -numpy.inf:
+            self.peptides[peptide.key] = peptide
+        else:
+            minkey = self.min_score_key()
+            minscore = self.peptides[minkey].score
+            if peptide.score > minscore:
+                del self.peptides[minkey]
+                self.peptides[peptide.key] = peptide
 
     @property
     def scores(self):
@@ -102,6 +112,34 @@ class Adjmat(object):
                     if p[0] not in exclusion_set]
         return self.peptides[keys[0]]
 
+    def min_score_key(self, exclusion_set=[]):
+        """
+        Get the peptide key with the minimal alignment score
+        • exclusion_set: peptide ids to exclude from the max_score search
+        """
+        sorted_peptides = sorted(self.scores.items(), key=operator.itemgetter(1), reverse=False)
+        keys = [p[0] for p in sorted_peptides\
+                    if p[0] not in exclusion_set]
+        return keys[0]
+
+    def clean(self, n=50):
+        """
+        Only keep the n best entries from self.peptides to limit memory usage
+        """
+        sorted_peptides = sorted(self.scores.items(), key=operator.itemgetter(1), reverse=True)
+        torm = [p[0] for p in sorted_peptides][n:]
+        for key in torm:
+            del self.peptides[key]
+        return torm
+
+    def rmkeys(self, keys):
+        """
+        Remove all the peptides with the given keys
+        """
+        for key in keys:
+            if key in self.peptides:
+                del self.peptides[key]
+
 
 def get_cmap(coords, threshold=8.):
     """
@@ -115,9 +153,10 @@ def get_cmap(coords, threshold=8.):
     return cmap
 
 
-def write_cmap(cmap, outfilename=None):
+def write_cmap(cmap, outfilename=None, gremlin_format=False):
     """
-    Write contact map to ascci file that complies with map_align cpp binary
+    Write contact map to ascci file that complies with map_align cpp binary if
+    not gremlin_format, else write a gremlin like formatted file
     """
     indices = numpy.asarray(numpy.where(numpy.triu(cmap))).T
     n = cmap.shape[0]
@@ -128,7 +167,10 @@ def write_cmap(cmap, outfilename=None):
         outfile = open(outfilename, 'w')
     outfile.write('LEN %d\n' % n)
     for e in indices:
-        outfile.write('CON %d %d 1.0\n' % tuple(e))
+        if not gremlin_format:
+            outfile.write('CON %d %d 1.0\n' % tuple(e))
+        else:
+            outfile.write('%d %d\n' % (e[0] + 1, e[1] + 1))
     return outfile
 
 
@@ -173,15 +215,20 @@ def map_align(inputdata, cmap_target, fasta_file=None, threshold=8., gap_o=-3., 
         # Compute the corresponding contact map
         cmap_input = write_cmap(get_cmap(inputdata, threshold=threshold))
     cmap_target = write_cmap(cmap_target)
-    sbp = Popen([
-        'map_align', '-gap_o',
-        '%.2f' % gap_o, '-gap_e',
-        '%.2f' % gap_e, '-a', cmap_input.name, '-b', cmap_target.name, '-silent', '-iter',
-        '%d' % n_iter
-    ],
-                stdout=PIPE,
-                stderr=PIPE)
-    stdoutdata, stderrdata = sbp.communicate()
+    with TemporaryFile(dir='/dev/shm') as output:
+        sbp = Popen([
+            'map_align', '-gap_o',
+            '%.2f' % gap_o, '-gap_e',
+            '%.2f' % gap_e, '-a', cmap_input.name, '-b', cmap_target.name, '-silent', '-iter',
+            '%d' % n_iter
+        ],
+                    stdout=output,
+                    stderr=None,
+                    bufsize=-1,
+                    close_fds=True)
+        sbp.wait()
+        output.seek(0)
+        stdoutdata = output.read()
     cmap_input.close()
     cmap_target.close()
     out_splitted = stdoutdata.split()
@@ -215,9 +262,8 @@ class Peptide(object):
     Return the CA trace coordinates of the peptide in one direction or the other
     based on the map align score
     """
-    def __init__(self, coords, aln, key):
+    def __init__(self, aln, key):
         """
-        • coords: coordinates of the peptide
         • aln: alignment object
         • key: identifier for the peptide (i, order), with:
             • i: the index of the peptide
@@ -225,10 +271,9 @@ class Peptide(object):
         • self.nca: number of ca
         • self.score: score of the given aln
         """
-        self.coords = coords
         self.aln = aln
         self.key = key
-        self.nca = self.coords.shape[0]
+        #self.nca = self.coords.shape[0]
         self.neighbors_r, self.neighbors_l = None, None
         self.components = None
 
@@ -267,12 +312,12 @@ class Peptide(object):
         """
         return (numpy.diff(self.aln.alignment.values()) - 1).max()
 
-    @property
-    def gap_penalty(self):
-        """
-        self.n_gap / self.nca
-        """
-        return self.n_gap / float(self.nca)
+    #@property
+    #def gap_penalty(self):
+    #    """
+    #    self.n_gap / self.nca
+    #    """
+    #    return self.n_gap / float(self.nca)
 
 
 class MapAlign(object):
@@ -290,7 +335,8 @@ class MapAlign(object):
                  neighbor_threshold=11.,
                  n_iter=1.,
                  gap_o=-3.,
-                 gap_e=-0.1):
+                 gap_e=-0.1,
+                 max_iter=numpy.inf):
         """
         • catraces: list of coordinates for the C-alpha traces
         list of array of coordinates
@@ -306,20 +352,22 @@ class MapAlign(object):
         • n_iter: number of iterations for the map_align algorithm
         • gap_o: gap opening penalty for the map_align algorithm
         • gap_e: gap extension penalty for the map_align algorithm
+        • max_iter: Maximum number of iterations for peptide alignments merging
         """
         self.threshold = threshold
         self.neighbor_threshold = neighbor_threshold
         self.n_iter = n_iter
         self.gap_o = gap_o
         self.gap_e = gap_e
-        catraces = numpy.asarray(catraces)
+        self.catraces = numpy.asarray(catraces)
         if type(gremlin_file) is numpy.ndarray:
             # gremlin_file is already a contact map
             self.gmap = gremlin_file
         else:
             self.gmap = read_gremlin(gremlin_file)  # gremlin predicted contact map
-        self.n_peptide = catraces.shape[0]
-        self.peptides = numpy.asarray([Peptide(catrace, None, (i, 1)) for i, catrace in enumerate(catraces)])
+        self.n_peptide = self.catraces.shape[0]
+        self.peptides = numpy.asarray([Peptide(None, (i, 1)) for\
+                                       i in range(self.n_peptide)])
         # Compute peptide alignment individually in both order
         self.get_peptide_alignment()
         self.anchors = self.get_anchors()
@@ -328,12 +376,28 @@ class MapAlign(object):
         self.coords_best = None  # Coordinates after optimization
         self.aln = None  # Alignment object after optimization
         self.fasta_file = fasta_file
-        self.adjmat = Adjmat()  # Adjacency matrix for peptide objects
+        self.sequence = read_sequence(fasta_file)
+        self.max_iter = max_iter
+        self.adjmat = Adjmat(max_iter=self.max_iter)  # Adjacency matrix for peptide objects
         # Compute a KDTree on all the coordinates for neighbor search
         pool = self.peptides.values()
-        data = numpy.asarray([p.coords[0] for p in pool])
+        data = numpy.asarray([self.get_peptide_coords(p)[0] for p in pool])
         self.keys = numpy.asarray([p.key for p in pool])
         self.kdtree = scipy.spatial.cKDTree(data)
+
+    def get_peptide_coords(self, peptide):
+        """
+        Get the coordinates of the peptide
+        """
+        keys, orders = peptide.key
+        if not isinstance(keys, collections.Iterable):
+            keys = (keys, )
+        if not isinstance(orders, collections.Iterable):
+            orders = (orders, )
+        coords = numpy.concatenate([self.catraces[key][::order] for\
+                                 key, order in zip(keys, orders)])
+        peptide.nca = coords.shape[0]
+        return coords
 
     def get_anchors(self):
         """
@@ -365,6 +429,7 @@ class MapAlign(object):
         overlap = []
         for i, a1 in enumerate(self.anchors):
             region1 = set(a1.aln.alignment.values())
+            #print region1
             for a2 in self.anchors[i + 1:]:
                 region2 = set(a2.aln.alignment.values())
                 minlen = float(min([len(region1), len(region2)]))
@@ -377,7 +442,7 @@ class MapAlign(object):
         Return the coordinates of all the peptides concatenated
         """
         if self.coords_best is None:  # Before optimization
-            return numpy.concatenate([self.peptides[tuple(key)].coords\
+            return numpy.concatenate([self.get_peptide_coords(self.peptides[tuple(key)])\
                                       for key in self.keys])
         else:
             return self.coords_best
@@ -392,7 +457,8 @@ class MapAlign(object):
         for i in range(self.n_peptide):
             for j in range(i + 1, self.n_peptide):
                 pept1, pept2 = self.peptides[(i, 1)], self.peptides[(j, 1)]
-                pdist.append(scipy.spatial.distance.cdist(pept1.coords, pept2.coords).min())
+                pdist.append(
+                    scipy.spatial.distance.cdist(self.get_peptide_coords(pept1), self.get_peptide_coords(pept2)).min())
         return scipy.spatial.distance.squareform(pdist)
 
     def get_neighbors(self, peptide):
@@ -410,12 +476,12 @@ class MapAlign(object):
         else:
             keys = peptide.key[0]
         # Right neighbors:
-        neighbors = self.keys[self.kdtree.query_ball_point(peptide.coords[-1],\
+        neighbors = self.keys[self.kdtree.query_ball_point(self.get_peptide_coords(peptide)[-1],\
                                                        self.neighbor_threshold)]
         neighbors = [tuple(e) for e in neighbors if e[0] not in keys]
         peptide.neighbors_r = [self.peptides[i] for i in neighbors]
         # Left neighbors:
-        neighbors = self.keys[self.kdtree.query_ball_point(peptide.coords[0],\
+        neighbors = self.keys[self.kdtree.query_ball_point(self.get_peptide_coords(peptide)[0],\
                                                        self.neighbor_threshold)]
         neighbors = [(k, -o) for (k, o) in neighbors if k not in keys]
         peptide.neighbors_l = [self.peptides[i] for i in neighbors]
@@ -425,20 +491,21 @@ class MapAlign(object):
         """
         Merge peptides together and compute the corresponding alignment
         """
-        coords = numpy.concatenate([e.coords for e in peptides])
+        coords = numpy.concatenate([self.get_peptide_coords(e) for e in peptides])
         keys = tuple([e.key[0] for e in peptides])
         keys = tuple(numpy.r_[keys])
         orders = tuple([e.key[1] for e in peptides])
         orders = tuple(numpy.r_[orders])
         concat_key = (keys, orders)
         if concat_key not in self.adjmat.keys:
-            aln = map_align(coords, self.gmap, n_iter=1, gap_o=self.gap_o, gap_e=self.gap_e)
-            peptide = Peptide(coords, aln, concat_key)
+            aln = map_align(coords, self.gmap, n_iter=1, gap_o=self.gap_o, gap_e=self.gap_e, threshold=self.threshold)
+            peptide = Peptide(aln, concat_key)
             self._get_components(peptide)
             self._get_coverage(peptide)
             self.adjmat.append(peptide)
             return peptide
         else:
+            #print "Re-root the tree search to: %s"%str(concat_key)
             return self.adjmat.get(concat_key)
 
     def delete(self, peptide, index):
@@ -550,16 +617,15 @@ class MapAlign(object):
         for i, pept in enumerate(self.peptides):
             # Try the two order for the coordinates
             for order in [1, -1]:
-                coords = pept.coords[::order]
-                aln = map_align(coords, self.gmap, n_iter=1, gap_o=-1., gap_e=-1)
-                peptides[(i, order)] = Peptide(coords, aln, (i, order))
+                coords = self.get_peptide_coords(pept)[::order]
+                aln = map_align(coords, self.gmap, n_iter=1, gap_o=-1., gap_e=-1, threshold=self.threshold)
+                peptides[(i, order)] = Peptide(aln, (i, order))
                 self._get_coverage(peptides[(i, order)])
         self.peptides = peptides
 
-    def align_fragments(self, max_iter=numpy.inf):
+    def align_fragments(self):
         """
         Compute the best alignment of the fragments to self.gmap
-        • max_iter: Maximum number of iterations
         """
         # Compute the alignment scores for pairwise merging
         n_pept = len(self.peptides)
@@ -574,9 +640,22 @@ class MapAlign(object):
         exclusion_set = []
         max_score = -numpy.inf
         #for _ in range(n_iter):
+        #while len(exclusion_set) < len(self.adjmat.scores):
         n_iter = 0
-        while len(exclusion_set) < len(self.adjmat.scores):
+        #for n_iter in range(self.max_iter):
+        while n_iter < self.max_iter:
+            if len(exclusion_set) >= len(self.adjmat.scores):
+                print("Exhaustive search completed !")
+                break
+            # Clean the adjacency matrix to limit memory usage
+            #torm = set(exclusion_set) - set([self.adjmat.max_score().key, ])
+            #self.adjmat.rmkeys(torm)
+            # Clean more when the length of the adjmat is too large:
+            #if len(self.adjmat.scores) > self.max_iter:
+            #    self.adjmat.clean(n=self.max_iter)
             pept1 = self.adjmat.max_score(exclusion_set=exclusion_set)
+            if pept1.score != -numpy.inf:
+                n_iter += 1
             exclusion_set.append(pept1.key)
             if pept1.score > max_score:
                 max_score = pept1.score
@@ -585,15 +664,17 @@ class MapAlign(object):
                 self.merge(pept1, pept2)
             for pept2 in pept1.neighbors_l:
                 self.merge(pept2, pept1)
-            print("%d/ %d: %s: score/score_max: %.2f/%.2f coverage: %.2f"\
-                      %(len(exclusion_set), len(self.adjmat.scores),
-                        str(pept1.key), pept1.score, max_score, pept1.coverage))
-            n_iter += 1
-            if n_iter >= max_iter:
-                print("Maximum number of iterations (%d) reached" % max_iter)
-                break
-        self.coords_best = self.adjmat.max_score().coords
-        self.aln = map_align(self.coords_best, self.gmap, fasta_file=self.fasta_file)
+            print("Iter. %d/%d: %d/ %d: score/score_max: %.2f/%.2f coverage: %.2f"\
+                      %(n_iter+1, self.max_iter, len(exclusion_set), len(self.adjmat.scores),
+                        pept1.score, max_score, pept1.coverage))
+            #if n_iter >= self.max_iter:
+            #    print "Maximum number of iterations (%d) reached"%self.max_iter
+            #    break
+        self.coords_best = self.get_peptide_coords(self.adjmat.max_score())
+        self.aln = map_align(self.coords_best, self.gmap, fasta_file=self.fasta_file, threshold=self.threshold)
+        self.adjmat.clean()  # Clean the adjacency matrix
+        for peptide in self.adjmat.peptides.values():
+            peptide.coords = self.get_peptide_coords(peptide)
 
     def optimize_ca(self, outfilename=None):
         """
@@ -618,6 +699,7 @@ class MapAlign(object):
             n_ca = 0  # Number of CA to add
             start = pos1 - 1  # where to add ca
             while pos2 > pointer2:
+                #print '- %s'%seq[pointer2]
                 pointer2 += 1
                 n_ca += 1
             end = pos1  # where to add ca
@@ -630,6 +712,7 @@ class MapAlign(object):
                     end += 1
                 insertions.append(start)
                 npoints.append(n_ca)
+            #print '%d %s %s'%(pos1, seq[pointer2], seq[pointer2])
             pointer1 += 1
             pointer2 += 1
         self.coords_best = self.reshufle(insertions, npoints, deletions)
@@ -647,7 +730,11 @@ class MapAlign(object):
                          refine=True)
         fit.learn()
         self.coords_best = fit.coords
-        self.aln = map_align(self.coords_best, self.gmap, fasta_file=self.fasta_file, outfilename=outfilename)
+        self.aln = map_align(self.coords_best,
+                             self.gmap,
+                             fasta_file=self.fasta_file,
+                             outfilename=outfilename,
+                             threshold=self.threshold)
 
     def get_topology(self):
         """
