@@ -44,3 +44,9 @@ run/model_C.pdb
 run/model_C.psf
 run/mstree_0.npz
 run/mstree_0.pdb
+__pycache__/mast.cpython-39.pyc
+__pycache__/pdbalign.cpython-39.pyc
+__pycache__/results_parser.cpython-39.pyc
+run/mast.log
+run/tmux-pane.out
+tmux-pane.out
