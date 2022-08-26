@@ -9,7 +9,7 @@ import numpy
 import Graph
 import scipy.sparse
 import collections
-import scipy.spatial.distance
+
 
 def get_degree(adjmat):
     """
@@ -85,16 +85,15 @@ def reorder_vine_paths(mstree1, mstree2):
     row, col, data = [], [], []
     for start, _ in forest:
         vpath_1 = numpy.asarray(tree_1.get_vine_path(start))
-        if set(vpath_1).issubset(set(vpath)):
-            sorter = numpy.argsort([numpy.where(vpath == e)[0][0] for e in vpath_1])
-            vpath_1 = vpath_1[sorter]
-            for i, j in zip(vpath_1, vpath_1[1:]):
-                row.append(i)
-                col.append(j)
-                data.append(1.)
-                row.append(j)
-                col.append(i)
-                data.append(1.)
+        sorter = numpy.argsort([numpy.where(vpath == e)[0][0] for e in vpath_1])
+        vpath_1 = vpath_1[sorter]
+        for i, j in zip(vpath_1, vpath_1[1:]):
+            row.append(i)
+            col.append(j)
+            data.append(1.)
+            row.append(j)
+            col.append(i)
+            data.append(1.)
     adjmat = scipy.sparse.coo_matrix((data, (row, col)),\
                                  shape=tree_1.graph.minimum_spanning_tree.shape)
     return adjmat
@@ -118,93 +117,6 @@ def intersect(tree1, tree2):
         else:
             intersection.append(end)
     return intersection
-
-def line_sphere_intersection(v, o, c, r, upper_dist):
-    """
-    Return the coordinates of the intersection between a line and a sphere:
-    see: https://goo.gl/euF3eQ
-    • v: unit vector of the direction of the line
-    • o: origin of the line
-    • c: center of the sphere
-    • r: radius of the sphere
-    • upper_dist: return only the point below the upper distance from o
-    """
-    A = -v.dot(o-c)
-    B = (v.dot(o-c))**2 - numpy.linalg.norm(o-c)**2 + r**2
-    if B >= 0:
-        d1 = A + numpy.sqrt(B)
-        d2 = A - numpy.sqrt(B)
-        results = numpy.asarray([d1, d2])
-        selection = numpy.logical_and(results > 0, results <= upper_dist)
-        if selection.any():
-            d = results[selection][0]
-            return o + v*d
-        else:
-            return None
-    else:
-        return None
-
-def resample_path(path_coords, delta):
-    """
-    Resample the path to get evenly distributed beads along the path with a
-    given delta distance.
-    • path_coords: coordinates of the beads along the path
-    • delta: delta distance
-    """
-    # Distances along the path from the first bead
-    #distances = numpy.linalg.norm(path_coords - path_coords[0], axis=1)
-    distances = numpy.linalg.norm(numpy.diff(path_coords, axis=0), axis=1).cumsum()
-    distances = numpy.r_[0, distances]
-    n_beads = int(distances[-1]/delta) + 1
-    distances_target = numpy.asarray([i*delta for i in range(n_beads)])
-    delta_target = distances[:, None] - numpy.broadcast_to(distances_target, (distances.size, distances_target.size))
-    delta_target[delta_target>0] = numpy.inf
-    delta_target = numpy.abs(delta_target)
-    bead_coords = [path_coords[0], ]
-    bead_id = 0
-    bead_coords_new = None
-    for i in range(1, n_beads):
-        while bead_coords_new is None and bead_id + 1 < path_coords.shape[0]:
-            coords_low = path_coords[bead_id]
-            coords_up = path_coords[bead_id+1]
-            bead_coords_last = bead_coords[-1]
-            v = coords_up - coords_low
-            upper_dist = numpy.linalg.norm(v)
-            v /= upper_dist
-            bead_coords_new = line_sphere_intersection(v, coords_low, bead_coords_last, delta, upper_dist)
-            bead_id += 1
-        if bead_coords_new is not None:
-            bead_coords.append(bead_coords_new)
-        bead_coords_new = None
-    return numpy.asarray(bead_coords)
-
-def clean_path(fragments, delta):
-    """
-    Remove beads with a distance lower than delta from the other.
-    • fragments: list of fragment coordinates
-    • delta: threshold distance
-    """
-    coords = []
-    for fragment in fragments:
-        coords.extend(list(fragment))
-    coords = numpy.asarray(coords)
-    dmat = scipy.spatial.distance.pdist(coords)
-    dmat = scipy.spatial.distance.squareform(dmat)
-    numpy.fill_diagonal(dmat, numpy.inf)
-    i = 0
-    fragments_cleaned = []
-    for fragment in fragments:
-        fragment_cleaned = []
-        for bead in fragment:
-            if (dmat[i] >= delta).all():
-                fragment_cleaned.append(bead)
-            else:
-                dmat[:, i] = numpy.inf
-            i += 1
-        if len(fragment_cleaned) > 1:
-            fragments_cleaned.append(numpy.asarray(fragment_cleaned))
-    return fragments_cleaned
-
 
 
 class Tree(object):
@@ -459,8 +371,7 @@ class Tree(object):
                         distance += numpy.linalg.norm(coords[n] - coords[path[-1]])
                     path.append(n)
                     node = n
-            if start is not None and end is not None and\
-                start in path and end in path:
+            if start is not None and end is not None:
                 subpath = []
                 addtopath = False
                 order = 1
@@ -547,26 +458,3 @@ class Tree(object):
         adjmat = scipy.sparse.coo_matrix((data, (row, col)),\
                                    shape=self.graph.minimum_spanning_tree.shape)
         return adjmat
-
-    def resample(self, delta=3.8):
-        """
-        Resample the tree to get evenly spaced nodes
-        • delta: distance between beads in Angstrom (default: 3.8 A -- average
-        distance between consecutive C-alpha)
-        """
-        self.get_forks_graph()
-        fragments = []
-        fragment_ids = []
-        fork_ids = []
-        for fork in self.P:
-            for end_node in self.P[fork]:
-                fragment = []
-                fragment.append(fork)
-                fragment.extend(self.P[fork][end_node])
-                if end_node not in fragment:
-                    fragment.append(end_node)
-                if tuple(fragment) not in fragment_ids and tuple(fragment[::-1]) not in fragment_ids and len(fragment) > 5:
-                    fragment_ids.append(tuple(fragment))
-                    fragments.append(resample_path(self.coords[fragment], delta))
-        fragments = clean_path(fragments, self.density.x_step)
-        return fragments

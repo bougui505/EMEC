@@ -136,8 +136,11 @@ class Chain(object):
         # graph_sidechains = Graph.Graph(sidechains)
         # graph_sidechains.minimum_spanning_tree = sidechains
         # tree_sidechains = Tree.Tree(graph_sidechains)
-        # sidechains = tree_sidechains.substract_from_tree(numpy.where(sidechains == backbone),
-        #                                                  mutate=False)
+        # print(sidechains)
+        # print('============')
+        # print(backbone)
+        # print(sidechains == backbone)
+        # sidechains = tree_sidechains.substract_from_tree(numpy.where(sidechains == backbone), mutate=False)
         return backbone, sidechains
 
     def clean_backbone(self):
@@ -232,9 +235,8 @@ class Chain(object):
             bfs = tree.graph.bfs(root_i, pdist=pdist)
             bfs = dict([(e.index, e.distance) for e in bfs])
             for j, root_j in enumerate(roots):
-                if root_j in bfs:
-                    topdist[i, j] = bfs[root_j]
-                    topdist[j, i] = bfs[root_j]
+                topdist[i, j] = bfs[root_j]
+                topdist[j, i] = bfs[root_j]
         pmat = gaussian(topdist, 4.32, sigma)
         pointers = numpy.where(pmat.max(axis=0) >= numpy.exp(-1. / 2))[0]
         # Compute the adjacency matrix for the CA
@@ -275,14 +277,10 @@ class Chain(object):
         roots = set(numpy.where(Tree.get_degree(self.protein) == 3)[0])
         # Remove the list of CA to keep
         roots -= set(resids)
-        #print_pymol_selection(resids)
         torm = []
         for root in roots:
-            #print_pymol_selection(tree.get_vine_path(root, exclusion_set=set(resids)))
             vpath = tree.get_vine_path(root)
-            #print_pymol_selection(vpath)
             torm.extend(vpath)
-        #print_pymol_selection(torm)
         tree.substract_from_tree(torm)
         # Compute the new protein with sidechains
         self.protein = self.get_protein()
@@ -379,8 +377,6 @@ class Chain(object):
             sc = tree.get_vine_path(ca)[1:]
         except KeyError:
             sc = None
-        #if sc is not None:
-            #print_pymol_selection(sc)
         return sc
 
     def CB(self):
@@ -432,12 +428,8 @@ class Skeleton(object):
         self.graph.get_minimum_spanning_tree()
         self.mstree = numpy.copy(self.graph.minimum_spanning_tree).item()
         self.coords = self.grid
-        # Save the original minimum_spanning_tree
-        numpy.savez('mstree_full.npz', mstree=self.mstree, coords=self.coords)
         # Clean the mstree:
         self.clean_mstree()
-        # Save the cleaned up minimum_spanning_tree
-        numpy.savez('mstree_pruned.npz', mstree=self.mstree, coords=self.coords)
         # Get the connected components (the polypeptidic chains)
         print("Detecting chains")
         chains = get_connected_components(self.mstree, self.coords, self.emd, pruning_threshold, save_npz=True)
@@ -459,9 +451,7 @@ class Skeleton(object):
                     if Tree.get_degree(chain_.CA).sum() > 0:
                         self.chains.append(chain_)
                         i += 1
-            progress.count(report="%d chains"%i)
-        catraces = [chain.coords_CA for chain in self.chains]
-        numpy.save('fragments.npy', catraces)
+            progress.count(report="%d chains" % i)
 
     def get_adjmat(self):
         """

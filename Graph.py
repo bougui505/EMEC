@@ -41,84 +41,6 @@ def argsort_coo_matrix(coomat):
     coomat = flatten_coo_matrix(coomat)
     return coomat.row[coomat.data.argsort()]
 
-class coarse_grained_graph(object):
-    def __init__(self, adjmat, coords, cgf):
-        """
-        • adjmat: the adjacency matrix of the graph to coarse grain
-        • coords: the coordinates of the nodes of the graph
-        • cgf: the coarse graining factor. Reduce by cgf the number of nodes
-        """
-        self.adjmat = adjmat
-        self.coords = coords
-        self.graph = dict(zip(scipy.sparse.triu(adjmat).row,
-                              scipy.sparse.triu(adjmat).col))
-        self.cgf = cgf
-        self.groups = self._make_groups()
-        self.adjmat = self._merge_adjmat()
-        self.coords = self._merge_coords()
-
-    def _make_groups(self):
-        """
-        Make group of nodes
-        """
-        nodes = set(self.graph.keys())
-        groups = []
-        while len(nodes) > 0:
-            node = nodes.pop()
-            group = set()
-            group |= set([node, ])
-            nnode = node
-            while len(group) < self.cgf:
-                if nnode in self.graph:
-                    nnode = self.graph[nnode]
-                    group |= set([nnode, ])
-                    nodes -= set([nnode, ])
-                else:
-                    break
-            groups.append(group)
-        return groups
-
-    def _merge_adjmat(self):
-        """
-        Merge the groups to get the coarse grained adjacency matrix
-        """
-        adjmat = self.adjmat.todense()
-        n = len(self.groups)
-        adjmat_cg = numpy.zeros((n, n))
-        for i, group1 in enumerate(self.groups):
-            #print "%d/%d"%(i+1, len(self.groups))
-            for ind, group2 in enumerate(self.groups[i+1:]):
-                j = ind + i + 1
-                w = adjmat[list(group1)][:, list(group2)].mean()
-                adjmat_cg[i, j] = w
-                adjmat_cg[j, i] = w
-        return scipy.sparse.coo_matrix(adjmat_cg)
-
-    def _merge_coords(self):
-        """
-        Merge the coordinates of the graph
-        """
-        coords_cg = []
-        for group in self.groups:
-            coords_cg.append(self.coords[list(group)].mean(axis=0))
-        coords_cg = numpy.asarray(coords_cg)
-        return coords_cg
-
-def rm_deadends(adjmat, coords):
-    """
-    Remove the deadends (nodes of degree 1) of the given adjmat by connecting
-    them to the nearest neighboring deadend in space.
-    """
-    # Get the deadends (nodes of degree 1)
-    deadends = numpy.where((adjmat > 0).sum(axis=0)==1)[1]
-    # Get the nearest neighbor for deadends
-    kdtree = scipy.spatial.KDTree(coords[deadends])
-    neighbors = kdtree.query(coords[deadends], k=2)[1]
-    neighbors = deadends[neighbors]
-    adjmat = adjmat.todense()
-    adjmat[neighbors[:,0], neighbors[:,1]] = 1.
-    adjmat[neighbors[:,1], neighbors[:,0]] = 1.
-    return scipy.sparse.coo_matrix(adjmat)
 
 class Graph:
     def __init__(self, adjacency_matrix=None, smap=None):
@@ -487,7 +409,6 @@ class Graph:
             t = folding_dict[k]  # tuple
             folded_matrix[t] = matrix[k]
         return folded_matrix
-
 
     def best_partition(self):
         print("computing communities maximizing modularity")
