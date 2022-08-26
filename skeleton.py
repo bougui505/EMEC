@@ -133,11 +133,11 @@ class Chain(object):
         backbone_selection -= set(self.vinepaths.keys())
         sidechains = self.tree.substract_from_tree(backbone_selection, mutate=False)
         # Remove edges present both in the backbone and the sidechains:
-        graph_sidechains = Graph.Graph(sidechains)
-        graph_sidechains.minimum_spanning_tree = sidechains
-        tree_sidechains = Tree.Tree(graph_sidechains)
-        sidechains = tree_sidechains.substract_from_tree(numpy.where(sidechains == backbone),
-                                                         mutate=False)
+        # graph_sidechains = Graph.Graph(sidechains)
+        # graph_sidechains.minimum_spanning_tree = sidechains
+        # tree_sidechains = Tree.Tree(graph_sidechains)
+        # sidechains = tree_sidechains.substract_from_tree(numpy.where(sidechains == backbone),
+        #                                                  mutate=False)
         return backbone, sidechains
 
     def clean_backbone(self):
