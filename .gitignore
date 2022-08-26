@@ -50,3 +50,16 @@ __pycache__/results_parser.cpython-39.pyc
 run/mast.log
 run/tmux-pane.out
 tmux-pane.out
+3j7h/data/3j7h.fasta
+3j7h/data/contacts.gremlin
+3j7h/data/emd_5995.map
+3j7h/data/emd_5995.nc
+3j7h/data/emd_5995_zone.nc
+3j7h/emec.conf
+3j7h/emec.log
+3j7h/mstree_full.npz
+3j7h/mstree_pruned.npz
+data/emd_2513_zone_no_cofactors.mrc
+run/fragments.npy
+run/mstree_full.npz
+run/mstree_pruned.npz
