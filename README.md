@@ -5,5 +5,20 @@ Electron cryo-microscopy (cryo-EM) has emerged as a powerful method to obtain th
 
 ---
 
+## Requirements
+
+The following python packages are required and can be installed using pip:
+
+- numpy
+- mrcfile
+- netCDF4
+- scipy
+- networkx
+- matplotlib
+- biopython
+- mpi4py
+
+## Installation
+
 ## Usage
 
