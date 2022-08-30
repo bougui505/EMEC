@@ -28,5 +28,7 @@ https://salilab.org/modeller/download_installation.html
 
 ## Installation
 
+To install EMEC, just clone the current repository and add the files in a directory that is listed in your `PYTHONPATH` variable, or add the path to EMEC directory in the `PYTHONPATH` variable. See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH for more details.
+
 ## Usage
 
