@@ -129,6 +129,7 @@ def write_cmap(cmap, outfilename=None):
     outfile.write('LEN %d\n' % n)
     for e in indices:
         outfile.write('CON %d %d 1.0\n' % tuple(e))
+    outfile.flush()
     return outfile
 
 
