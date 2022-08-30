@@ -18,6 +18,10 @@ The following python packages are required and can be installed using pip:
 - biopython
 - mpi4py
 
+EMEC makes use of `map_align` C++ implementation. This program can be installed using detailed instruction from the `map_align` repository:
+
+https://github.com/sokrypton/map_align
+
 ## Installation
 
 ## Usage
