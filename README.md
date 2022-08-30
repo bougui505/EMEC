@@ -30,5 +30,13 @@ https://salilab.org/modeller/download_installation.html
 
 To install EMEC, just clone the current repository and add the files in a directory that is listed in your `PYTHONPATH` variable, or add the path to EMEC directory in the `PYTHONPATH` variable. See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH for more details.
 
+The file `emec.py` can be linked as `emec` in a directory listed in your `$PATH` variable. If `$HOME/bin` is listed in `$PATH`:
+
+`cd $HOME/bin && ln -s path/to/emec.py emec`
+
 ## Usage
 
+The main EMEC file is `emec.py`. This file read a configuration file called `emec.conf`. An example `emec.conf` file is in `run/emec.conf`.
+To reproduce the results of the paper, just run the following command in the `run/` directory:
+
+`emec emec.conf`
