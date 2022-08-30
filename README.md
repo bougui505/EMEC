@@ -22,6 +22,10 @@ EMEC makes use of `map_align` C++ implementation. This program can be installed 
 
 https://github.com/sokrypton/map_align
 
+For the final model building, Modeller software is used. This program can be installed using the standard installation procedure as described in:
+
+https://salilab.org/modeller/download_installation.html
+
 ## Installation
 
 ## Usage
