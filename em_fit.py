@@ -9,19 +9,30 @@ import numpy
 from scipy.ndimage.morphology import distance_transform_edt
 import scipy.spatial.distance
 import scipy.stats
-import progress_reporting
+from EMEC import progress_reporting
 import os
-import Graph
-import EMDensity
-import Tree
+from EMEC import Graph
+from EMEC import EMDensity
+from EMEC import Tree
+
 
 class Fit(object):
     """
     Fit C-alpha trace onto a electron microscopy density map
     """
-    def __init__(self, emd, threshold, graph, coords, n_iter, alpha_0=1.,
-                 alpha_1=0.01, radius_0=5., radius_1=.1, training_set=None,
-                 refine=False, refinment_radius=3.8/2.):
+    def __init__(self,
+                 emd,
+                 threshold,
+                 graph,
+                 coords,
+                 n_iter,
+                 alpha_0=1.,
+                 alpha_1=0.01,
+                 radius_0=5.,
+                 radius_1=.1,
+                 training_set=None,
+                 refine=False,
+                 refinment_radius=3.8 / 2.):
         """
         • emd: electron microscopy density in netcdf (nc) format
         • threshold: threshold applied to the em map
@@ -43,7 +54,7 @@ class Fit(object):
         self.mgrid = (self.Density.xgrid, self.Density.ygrid, self.Density.zgrid)
         self.nx, self.ny, self.nz = self.Density.nx, self.Density.ny, self.Density.nz
         self.x_step, self.y_step, self.z_step = self.Density.x_step, self.Density.y_step, self.Density.z_step
-        self.t = 0 # iteration index
+        self.t = 0  # iteration index
         self.n_iter = n_iter
         if refine:
             selection = set(numpy.concatenate(self.Density.kdtree.query_ball_point(self.coords, refinment_radius)))
@@ -58,7 +69,7 @@ class Fit(object):
         self.annealing_alpha = self.annealing_function(alpha_0, alpha_1)
         self.radius = self.annealing_radius(self.t)
         self.alpha = self.annealing_alpha(self.t)
-        self.neighborhood_function = lambda x: self.alpha * numpy.exp(-x**2/(2.*self.radius**2))
+        self.neighborhood_function = lambda x: self.alpha * numpy.exp(-x**2 / (2. * self.radius**2))
         self.bmu = None
 
     def compute_distances(self):
@@ -70,15 +81,13 @@ class Fit(object):
         #pdist = scipy.spatial.distance.squareform(pdist)
         for i, j in numpy.asarray(numpy.where(~numpy.isinf(self.graph.minimum_spanning_tree))).T:
             #self.graph.minimum_spanning_tree[i,j] = pdist[i, j]
-            self.graph.minimum_spanning_tree[i,j] = 1.
+            self.graph.minimum_spanning_tree[i, j] = 1.
 
     def generate_data_points(self):
         """
         Generate all data points from the probability density for training
         """
-        index = numpy.random.choice(self.density.size,
-                                    p=self.density/self.density.sum(),
-                                    size=self.n_iter)
+        index = numpy.random.choice(self.density.size, p=self.density / self.density.sum(), size=self.n_iter)
         xgrid, ygrid, zgrid = self.mgrid
         coord = numpy.asarray([xgrid[index], ygrid[index], zgrid[index]])
         return coord.T
@@ -101,7 +110,7 @@ class Fit(object):
         • param_0: starting parameter
         • param_1: parameter reached for self.n_iter iterations
         """
-        return lambda x: ((param_1 - param_0)/self.n_iter)*x+param_0
+        return lambda x: ((param_1 - param_0) / self.n_iter) * x + param_0
 
     def get_bmu(self, data):
         """
@@ -132,8 +141,7 @@ class Fit(object):
         """
         Learn the map for n_iter iterations
         """
-        progress = progress_reporting.Progress(self.n_iter, delta=10,
-                                               label="fitting")
+        progress = progress_reporting.Progress(self.n_iter, delta=10, label="fitting")
         for i in range(self.n_iter):
             self.apply_learning()
-            progress.count(report="iteration %d; α=%.2g; σ=%.2g; bmu=%d"%(i, self.alpha, self.radius, self.bmu))
+            progress.count(report="iteration %d; α=%.2g; σ=%.2g; bmu=%d" % (i, self.alpha, self.radius, self.bmu))

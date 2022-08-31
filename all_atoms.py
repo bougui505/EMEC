@@ -8,12 +8,14 @@
 import numpy
 import scipy.spatial.distance
 import re
-import em_fit
-import optimizer
+from EMEC import em_fit
+from EMEC import optimizer
 import sys
+
 sys.path.append('/home/bougui/source/modeller_repair_protein')
 import repair_protein
-import Graph
+from EMEC import Graph
+
 
 def read_pdb(pdbfilename):
     """
@@ -24,7 +26,10 @@ def read_pdb(pdbfilename):
     with open(pdbfilename) as pdbfile:
         for line in pdbfile:
             if line[:4] == 'ATOM':
-                splitted_line = [line[:6], line[6:11], line[12:16], line[17:20], line[21], line[22:26], line[30:38], line[38:46], line[46:54]]
+                splitted_line = [
+                    line[:6], line[6:11], line[12:16], line[17:20], line[21], line[22:26], line[30:38], line[38:46],
+                    line[46:54]
+                ]
                 splitted_lines.append(splitted_line)
     splitted_lines = numpy.asarray(splitted_lines)
     atom_types = [e.strip() for e in splitted_lines[:, 2]]
@@ -34,6 +39,7 @@ def read_pdb(pdbfilename):
     # Check if the given pdbfile is a CA trace only
     is_ca_trace = len(set(resids)) == len(resids)
     return atom_types, aa_list, chain_ids, resids, numpy.float_(splitted_lines[:, 6:9]), is_ca_trace
+
 
 def get_cmap(pdbfile, threshold=5.):
     """
@@ -45,19 +51,19 @@ def get_cmap(pdbfile, threshold=5.):
     """
     atom_types, aa_list, chain_ids, resids, coords, _ = read_pdb(pdbfile)
     pdist = scipy.spatial.distance.squareform(scipy.spatial.distance.pdist(coords))
-    cmap = numpy.zeros((len(set(resids)),)*2)
+    cmap = numpy.zeros((len(set(resids)), ) * 2)
     for pt_i, i in enumerate(numpy.unique(resids)):
         for pt_j, j in enumerate(numpy.unique(resids)):
             cmap[pt_i, pt_j] = pdist[resids == i][:, resids == j].min()
     cmap = numpy.int_(cmap <= threshold)
     return cmap
 
+
 class AllAtoms(object):
     """
     Build an all atom protein fitting the EM density from a CA trace
     """
-    def __init__(self, pdbfile, fasta, emd, level, mrc, resolution, alpha=None,
-                 strand=None, basename=None):
+    def __init__(self, pdbfile, fasta, emd, level, mrc, resolution, alpha=None, strand=None, basename=None):
         """
         • pdbfile: coordinates for the CA trace in PDB format
         • fasta: fasta file with the sequence aligned using map_align
@@ -85,10 +91,10 @@ class AllAtoms(object):
         atom_types, aa_list, chain_ids, resids, coords, is_ca_trace = read_pdb(pdbfile)
         if is_ca_trace:
             self.atom_types, self.aa_list, self.chain_ids, self.resids, self.coords, _ = self.ca_to_all()
-            self.cmap = get_cmap('%s.pdb'%self.basename) # Contact map for the all atoms protein
+            self.cmap = get_cmap('%s.pdb' % self.basename)  # Contact map for the all atoms protein
             self.n_atoms = self.coords.shape[0]
-            self.topology = self.get_topology() # topology (adjacency matrix) for
-                                                # the all atom protein
+            self.topology = self.get_topology()  # topology (adjacency matrix) for
+            # the all atom protein
         else:
             # already all atom
             self.atom_types, self.aa_list, self.chain_ids, self.resids, self.coords = \
@@ -101,13 +107,16 @@ class AllAtoms(object):
         """
         Convert the CA trace to all atoms
         """
-        repair_protein.repair_protein(self.pdbfile, sequence=self.fasta,
-                                      write_psf=True, emd=self.mrc,
+        repair_protein.repair_protein(self.pdbfile,
+                                      sequence=self.fasta,
+                                      write_psf=True,
+                                      emd=self.mrc,
                                       resolution=self.resolution,
-                                      alpha=self.alpha, strand=self.strand,
-                                      outpdb="%s.pdb"%self.basename)
+                                      alpha=self.alpha,
+                                      strand=self.strand,
+                                      outpdb="%s.pdb" % self.basename)
         # return the coordinates of the all atoms protein
-        return read_pdb('%s.pdb'%self.basename)
+        return read_pdb('%s.pdb' % self.basename)
 
     @property
     def ca_trace(self):
@@ -122,7 +131,7 @@ class AllAtoms(object):
         Read the BONDS section of the PSF to build the corresponding adjacency
         matrix
         """
-        psffilename = '%s.psf'%self.basename
+        psffilename = '%s.psf' % self.basename
         start = False
         topology = numpy.ones((self.n_atoms, self.n_atoms)) * numpy.inf
         with open(psffilename) as psffile:
@@ -144,23 +153,34 @@ class AllAtoms(object):
         """
         graph = Graph.Graph(self.topology)
         graph.minimum_spanning_tree = self.topology
-        emf = em_fit.Fit(self.emd, self.level, graph, self.coords, 20000,
-                         alpha_0=.1, alpha_1=0.0, radius_0=1., radius_1=0.,
+        emf = em_fit.Fit(self.emd,
+                         self.level,
+                         graph,
+                         self.coords,
+                         20000,
+                         alpha_0=.1,
+                         alpha_1=0.0,
+                         radius_0=1.,
+                         radius_1=0.,
                          refine=True)
         emf.learn()
-        self.write_pdb(pdbname="%s.pdb"%self.basename)
-        repair_protein.repair_protein('%s.pdb'%self.basename, emd=self.mrc,
+        self.write_pdb(pdbname="%s.pdb" % self.basename)
+        repair_protein.repair_protein('%s.pdb' % self.basename,
+                                      emd=self.mrc,
                                       resolution=self.resolution,
                                       outpdb=self.basename)
-        repair_protein.align_structures(self.pdbfile, '%s.pdb'%self.basename)
-        self.atom_types, self.aa_list, self.chain_ids, self.resids, self.coords, _ = read_pdb('%s.pdb'%self.basename)
+        repair_protein.align_structures(self.pdbfile, '%s.pdb' % self.basename)
+        self.atom_types, self.aa_list, self.chain_ids, self.resids, self.coords, _ = read_pdb('%s.pdb' % self.basename)
 
     def write_pdb(self, pdbname='modeller_out.pdb'):
         """
         Write a PDB file to disk
         """
-        connect = numpy.asarray(numpy.where(~numpy.isinf(self.topology))).T+1
-        optimizer.write_pdb(self.coords, sequence=self.aa_list,
-                            atoms=self.atom_types, chain_ids=self.chain_ids,
-                            resids=self.resids, outfilename=pdbname,
+        connect = numpy.asarray(numpy.where(~numpy.isinf(self.topology))).T + 1
+        optimizer.write_pdb(self.coords,
+                            sequence=self.aa_list,
+                            atoms=self.atom_types,
+                            chain_ids=self.chain_ids,
+                            resids=self.resids,
+                            outfilename=pdbname,
                             write_conect=False)

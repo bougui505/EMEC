@@ -11,7 +11,7 @@ import itertools
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from scipy.interpolate import interp1d
-import EMDensity
+from EMEC import EMDensity
 
 
 def build_database():

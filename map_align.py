@@ -11,10 +11,10 @@ import scipy.spatial
 from subprocess import Popen
 from subprocess import PIPE
 from tempfile import NamedTemporaryFile
-import progress_reporting
-import EMDensity
-import Graph
-import em_fit
+from EMEC import progress_reporting
+from EMEC import EMDensity
+from EMEC import Graph
+from EMEC import em_fit
 import scipy.cluster.hierarchy
 import operator
 import copy

@@ -6,7 +6,7 @@
 # 2017-01-17 15:17:50 (UTC+0100)
 
 import numpy
-import Graph
+from EMEC import Graph
 import scipy.sparse
 import collections
 

@@ -7,9 +7,9 @@ import numpy
 import scipy.spatial.distance
 import scipy.ndimage
 import networkx
-import community
+from EMEC import community
 import numbers
-import progress_reporting
+from EMEC import progress_reporting
 
 
 class node(object):
