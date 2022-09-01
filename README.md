@@ -40,3 +40,5 @@ The main EMEC file is `emec.py`. This file read a configuration file called `eme
 To reproduce the results of the paper, just run the following command in the `run/` directory:
 
 `emec emec.conf`
+
+The EM map is read from a NetCDF file format that can be created from an MRC file using the UCSF Chimera software (https://www.cgl.ucsf.edu/chimera/)
